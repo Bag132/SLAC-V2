@@ -18,6 +18,7 @@
 #define DISP_CTRL_CURSOR_BLINK  (1 << 0)
 
 #define CLEAR_DISPLAY   (1 << 0)
+#define RS 0x01
 
 // HD44780U
 // PCF8574A
@@ -34,10 +35,11 @@ typedef enum
     HD_DB7 = (0x01 << 7)    // P7
 } HD_bitmap;
 
+uint8_t backlight_value = 0x00;
 void write_i2c(uint8_t data)
 {
-    uint8_t value = data | HD_BT;
-    i2c_write(PCF_ADDRESS, &value, 1);
+    uint8_t value = data | backlight_value;
+    ESP_ERROR_CHECK(i2c_write(PCF_ADDRESS, &value, 1));
 }
 
 // Blocks
@@ -68,7 +70,7 @@ void function_set_4_bit()
 
 void display_control()
 {
-    send_command(DISP_CTRL | DISP_CTRL_ON | DISP_CTRL_CURSOR_ON, 0);
+    send_command(DISP_CTRL | DISP_CTRL_ON | DISP_CTRL_CURSOR_ON | DISP_CTRL_CURSOR_BLINK, 0);
 }
 
 void clear_display()
@@ -85,14 +87,15 @@ void clear_display()
 void lcd_init()
 {
     ets_delay_us(50 * 1000);
-    uint8_t blv = 0x08;
-    i2c_write(PCF_ADDRESS, &blv, 1);
+    // uint8_t blv = 0x08;
+    // i2c_write(PCF_ADDRESS, &blv, 1);
     ets_delay_us(1000 * 1000);
-    write_command_nibble(CMD_INIT_FUNCTION_SET << 4);
+    write_command_nibble(0x03 << 4);
+    printf("farted\n");
     ets_delay_us(4100);
-    write_command_nibble(CMD_INIT_FUNCTION_SET << 4);
+    write_command_nibble(0x03 << 4);
     ets_delay_us(100);
-    write_command_nibble(CMD_INIT_FUNCTION_SET << 4);
+    write_command_nibble(0x03 << 4);
 
     write_command_nibble(0x02 << 4);
 
@@ -103,6 +106,10 @@ void lcd_init()
 
     send_command(0x04 | 0x02, 0);
     send_command(0x02, 0);
+    backlight_value = HD_BT;
+    write_i2c(0);
+
+    send_command(0x67, RS);
 }
 
 void lcd_clear_display()

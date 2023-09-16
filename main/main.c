@@ -113,9 +113,9 @@ void app_main(void)
     
     lcd_init();
     
-    while(1) {
-        ls_set_rgb(&c);
-    }
+    // while(1) {
+    //     ls_set_rgb(&c);
+    // }
     // ls_time_fade(0, 255, 0, 1000);
     
     
