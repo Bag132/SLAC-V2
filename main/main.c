@@ -15,7 +15,7 @@
 #include "lcd_display.h"
 
 
-static const char *TAG = "i2c-simple-main";
+static const char *TAG = "main";
 
 #define I2C_MASTER_SCL_IO           CONFIG_I2C_MASTER_SCL      /*!< GPIO number used for I2C master clock */
 #define I2C_MASTER_SDA_IO           CONFIG_I2C_MASTER_SDA      /*!< GPIO number used for I2C master data  */
@@ -112,6 +112,7 @@ void app_main(void)
 
     
     lcd_init();
+    lcd_print("rich fonar");
     
     // while(1) {
     //     ls_set_rgb(&c);
@@ -120,7 +121,7 @@ void app_main(void)
     
     
     ESP_ERROR_CHECK(i2c_driver_delete(I2C_MASTER_NUM));
-    ESP_LOGI(TAG, "I2C de-initialized successfully");
+    // ESP_LOGI(TAG, "I2C de-initialized successfully");
 }
 
 

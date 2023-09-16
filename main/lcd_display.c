@@ -17,8 +17,18 @@
 #define DISP_CTRL_CURSOR_ON     (1 << 1)
 #define DISP_CTRL_CURSOR_BLINK  (1 << 0)
 
+#define READ_BUSY_FLAG  (1 << 7)
+
+#define RETURN_HOME (1 << 1)
+
+#define SET_DDRAM_ADDR  (1 << 7)
+
 #define CLEAR_DISPLAY   (1 << 0)
-#define RS 0x01
+
+#define ROW_OFFSET (1 << 6)
+
+static const char *TAG = "lcd_display";
+
 
 // HD44780U
 // PCF8574A
@@ -36,6 +46,7 @@ typedef enum
 } HD_bitmap;
 
 uint8_t backlight_value = 0x00;
+
 void write_i2c(uint8_t data)
 {
     uint8_t value = data | backlight_value;
@@ -65,7 +76,7 @@ void send_command(uint8_t data, uint8_t mode)
 
 void function_set_4_bit()
 {
-    send_command(FN_SET_4_BIT, 0);
+    send_command(FN_SET_4_BIT | FN_SET_DISP_LINES, 0);
 }
 
 void display_control()
@@ -73,15 +84,61 @@ void display_control()
     send_command(DISP_CTRL | DISP_CTRL_ON | DISP_CTRL_CURSOR_ON | DISP_CTRL_CURSOR_BLINK, 0);
 }
 
-void clear_display()
+void lcd_clear_display()
 {
     send_command(CLEAR_DISPLAY, 0);
 }
 
-// bool check_busy_flag()
-// {
+void home()
+{
+    send_command(RETURN_HOME, 0);
+}
 
-// }
+void lcd_set_cursor(uint8_t row, uint8_t col)
+{
+    send_command(SET_DDRAM_ADDR | col | (row == 1 ? ROW_OFFSET : 0), 0);
+}
+
+void lcd_print(const char *sequence)
+{
+    home();
+    for (uint8_t i = 0; i < 32; i++) {
+        if (sequence[i] != '\0') {
+            if (i == 16) {
+                send_command(SET_DDRAM_ADDR | ROW_OFFSET, 0);
+            }
+            send_command(sequence[i], HD_RS);
+        } else {
+            break;
+        }
+    }
+}
+
+void lcd_print_position(const char *sequence, uint8_t row, uint8_t col)
+{
+    lcd_set_cursor(row, col);
+    uint8_t start = col + (row * 16);
+    for (uint8_t i = start; i < 32; i++) {
+        if (sequence[i - start] != '\0') {
+            if (i == 16 && start != 16) {
+                send_command(SET_DDRAM_ADDR | ROW_OFFSET, 0);
+            }
+            send_command(sequence[i - start], HD_RS);
+        } else {
+            break;
+        }
+    }
+}
+
+uint8_t get_busy_flag()
+{
+    send_command(READ_BUSY_FLAG, HD_RW);
+    uint8_t read_byte_1, read_byte_2;
+    ESP_ERROR_CHECK(i2c_read(PCF_ADDRESS, &read_byte_1, 1));
+    ESP_ERROR_CHECK(i2c_read(PCF_ADDRESS, &read_byte_2, 1));
+
+    return read_byte_1 & HD_DB7;
+}
 
 // Blocks
 void lcd_init()
@@ -91,7 +148,6 @@ void lcd_init()
     // i2c_write(PCF_ADDRESS, &blv, 1);
     ets_delay_us(1000 * 1000);
     write_command_nibble(0x03 << 4);
-    printf("farted\n");
     ets_delay_us(4100);
     write_command_nibble(0x03 << 4);
     ets_delay_us(100);
@@ -101,7 +157,7 @@ void lcd_init()
 
     function_set_4_bit();
     display_control();
-    clear_display();
+    lcd_clear_display();
     ets_delay_us(2000);
 
     send_command(0x04 | 0x02, 0);
@@ -109,10 +165,7 @@ void lcd_init()
     backlight_value = HD_BT;
     write_i2c(0);
 
-    send_command(0x67, RS);
-}
-
-void lcd_clear_display()
-{
-
+    // lcd_print("I have a gun in my backpack.");
+    // lcd_print_position("fonarfonarfonar", 0, 3);
+    
 }
