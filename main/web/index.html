@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Strobe Light Alarm Clock</title>
+		<script>
+			function startUpload() {
+				var otafile = document.getElementById("otafile").files;
+
+				if (otafile.length == 0) {
+					alert("No file selected!");
+				} else {
+					document.getElementById("otafile").disabled = true;
+					document.getElementById("upload").disabled = true;
+
+					var file = otafile[0];
+					var xhr = new XMLHttpRequest();
+					xhr.onreadystatechange = function() {
+						if (xhr.readyState == 4) {
+							if (xhr.status == 200) {
+								document.open();
+								document.write(xhr.responseText);
+								document.close();
+							} else if (xhr.status == 0) {
+								alert("Server closed the connection abruptly!");
+								location.reload()
+							} else {
+								alert(xhr.status + " Error!\n" + xhr.responseText);
+								location.reload()
+							}
+						}
+					};
+
+					xhr.upload.onprogress = function (e) {
+						var progress = document.getElementById("progress");
+						progress.textContent = "Progress: " + (e.loaded / e.total * 100).toFixed(0) + "%";
+					};
+					xhr.open("POST", "/update", true);
+					xhr.send(file);
+				}
+			}
+
+			function syncTime() {
+				const today = new Date();
+				let day = today.getDay() < 10 ? "0" + today.getDay() : today.getDay()
+				let month = today.getMonth() < 10 ? "0" + today.getMonth() : today.getMonth()
+
+				const timestr = today.getDay() + "-" + today.getMonth() + "-" + today.getFullYear() + " " + today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+				let xhr = new XMLHttpRequest();
+				xhr.onreadystatechange = function() {
+					if (xhr.readyState == 4) {
+						console.log('Bruh 200')
+						var progress = document.getElementById("progress");
+						progress.textContent = "Status " + xhr.status;
+					}
+				};
+
+				xhr.upload.onprogress = function (e) {
+					var progress = document.getElementById("progress");
+					progress.textContent = "Progress: " + (e.loaded / e.total * 100).toFixed(0) + "%";
+				}
+				xhr.open("POST", "/sync", true);
+				xhr.send(timestr)
+			}
+
+			function setAlarmTime() {
+				const alarmControl = document.getElementById("alarm-time");
+				const alarmValue = alarmControl.value;
+
+				let xhr = new XMLHttpRequest();
+				xhr.onreadystatechange = function() {
+					if (xhr.readyState == 4) {
+						console.log('Bruh 200')
+						let progress = document.getElementById("progress");
+						progress.textContent = "Status " + xhr.status;
+					}
+				};
+
+				xhr.upload.onprogress = function (e) {
+					let progress = document.getElementById("progress");
+					progress.textContent = "Progress: " + (e.loaded / e.total * 100).toFixed(0) + "%";
+				}
+				xhr.open("POST", "/setalarm", true);
+				xhr.send(alarmValue);
+			}
+		</script>
+		<style>
+			#sync-time{
+				margin-top: 5%;
+				margin-bottom: 5%;
+				width: 75%; 
+				height: 40px; 
+				margin-left: 12.5%; 
+				margin-right: 12.5%;
+				text-align: center;
+				line-height: 40%;
+			}
+
+			#alarm-time{
+				width:75%;
+				height: 20px;
+				margin-left: 12.5%;
+				margin-right: 12.5%;
+			}
+
+			#set-alarm-button{
+				margin-top: 2%;
+				margin-bottom: 5%;
+				width: 60%; 
+				height: 40px; 
+				margin-left: 20%; 
+				margin-right: 20%;
+				text-align: center;
+				line-height: 40%;			
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Strobe Light Alarm Clock Control</h1>
+		<button type="button" id="sync-time" onclick="syncTime()">Sync Time</button>
+		<input type="time" id="alarm-time"/>
+		<button type="button" id="set-alarm-button", onclick="setAlarmTime()">Set Alarm Time</button>
+		<div id="progress"></div>
+	</body>
+</html>

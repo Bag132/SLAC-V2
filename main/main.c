@@ -13,6 +13,7 @@
 #include "esp_app_trace.h"
 #include <esp_timer.h>
 #include "lcd_display.h"
+#include "webserver.h"
 
 
 static const char *TAG = "main";
@@ -118,6 +119,8 @@ void app_main(void)
     //     ls_set_rgb(&c);
     // }
     // ls_time_fade(0, 255, 0, 1000);
+
+    ws_run();
     
     
     ESP_ERROR_CHECK(i2c_driver_delete(I2C_MASTER_NUM));
