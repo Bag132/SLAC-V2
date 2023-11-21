@@ -4,6 +4,7 @@
 #include "I2C_lib.h"
 #include <time.h>
 #include "DS1307.h"
+#include "alarm_clock.h"
 #include "light_strip.h"
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
@@ -14,6 +15,8 @@
 #include <esp_timer.h>
 #include "lcd_display.h"
 #include "webserver.h"
+#include <esp_spiffs.h>
+
 
 
 static const char *TAG = "main";
@@ -29,6 +32,50 @@ static const char *TAG = "main";
 #define RED_GPIO_NUM    32
 #define GREEN_GPIO_NUM  33
 #define BLUE_GPIO_NUM   23
+
+#define MAX_DISTANCE_CM 500 // 5m max
+
+#define TRIGGER_GPIO 5
+#define ECHO_GPIO 18
+
+
+// void ultrasonic_test(void *pvParameters)
+// {
+//     ultrasonic_sensor_t sensor = {
+//         .trigger_pin = TRIGGER_GPIO,
+//         .echo_pin = ECHO_GPIO
+//     };
+
+//     ultrasonic_init(&sensor);
+
+//     while (true)
+//     {
+//         float distance;
+//         esp_err_t res = ultrasonic_measure(&sensor, MAX_DISTANCE_CM, &distance);
+//         if (res != ESP_OK)
+//         {
+//             printf("Error %d: ", res);
+//             switch (res)
+//             {
+//                 case ESP_ERR_ULTRASONIC_PING:
+//                     printf("Cannot ping (device is in invalid state)\n");
+//                     break;
+//                 case ESP_ERR_ULTRASONIC_PING_TIMEOUT:
+//                     printf("Ping timeout (no device found)\n");
+//                     break;
+//                 case ESP_ERR_ULTRASONIC_ECHO_TIMEOUT:
+//                     printf("Echo timeout (i.e. distance too big)\n");
+//                     break;
+//                 default:
+//                     printf("%s\n", esp_err_to_name(res));
+//             }
+//         }
+//         else
+//             printf("Distance: %0.04f cm\n", distance*100);
+
+//         vTaskDelay(pdMS_TO_TICKS(500));
+//     }
+// }
 
 
 /**
@@ -86,45 +133,99 @@ bool fade_callback(const ledc_cb_param_t *param, void *next_color)
     return false;
 }
 
+void setup_spiffs() 
+{
+    esp_vfs_spiffs_conf_t conf = {
+      .base_path = "/spiffs",
+      .partition_label = NULL,
+      .max_files = 5,
+      .format_if_mount_failed = true
+    };
 
+    esp_err_t ret = esp_vfs_spiffs_register(&conf);
+    
+    if (ret != ESP_OK) {
+            if (ret == ESP_FAIL) {
+                ESP_LOGE(TAG, "Failed to mount or format filesystem");
+            } else if (ret == ESP_ERR_NOT_FOUND) {
+                ESP_LOGE(TAG, "Failed to find SPIFFS partition");
+            } else {
+                ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
+            }
+        return;
+    }
+}
+
+void display_time(void* a) 
+{
+    ds_time t;
+    while(1) { // optimizr by only writibg to xhanged charater
+        ds_get_time(&t);
+        lcd_display_time(&t);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    } 
+}
 
 // TODO: Web interface, connect to internet, flash lights
 void app_main(void)
 {
-    ESP_ERROR_CHECK(i2c_master_init());
-    ESP_LOGI(TAG, "I2C initialized successfully");
+    // VL53LX_Dev_t t;
+    // t.i2c_slave_address = 0x52;
+    // t.comms_speed_khz = 100;
+    // VL53LX_DEV tof;
+    // tof->i2c_slave_address = 0x52;
 
-    // ds_set_clock_halt(false);
-    // ds_set_month(99);
-    // ds_time dt;
-    // ESP_ERROR_CHECK(ds_get_time(&dt));
-    // ds_log_time(&dt);
+
+    // VL53LX_WaitDeviceBooted(&tof);
+    // VL53LX_DataInit(tof);
+    
+    // xTaskCreate(ultrasonic_test, "ultrasonic_test", configMINIMAL_STACK_SIZE * 3, NULL, 5, NULL);
+
+    // printf("I2S PDM RX example start\n---------------------------\n");
+    // xTaskCreate(i2s_example_pdm_rx_task, "i2s_example_pdm_rx_task", 4096, NULL, 5, NULL);
+
+    // while(1)
+    // vTaskDelay(5);
+
+    setup_spiffs();
+    ESP_ERROR_CHECK(i2c_master_init());
 
     ls_setup(RED_GPIO_NUM, GREEN_GPIO_NUM, BLUE_GPIO_NUM);
-    ls_color c = {.r = 0, .g = 255, .b = 255};
-    ls_set_rgb(&c);
 
-    // ledc_cbs_t cbs = {.fade_cb = &fade_callback};
-    // ls_color color_1 = {.r = 0, .g = 255, .b = 0}, color_2 = {.r = 0, .g = 255, .b = 0};
-    // ls_set_fade_callback(&cbs, (void*) &color_1);
-    // c.r = 255;
-    // c.b = 0;
-    // ls_time_fade(&c, 1000);
 
-    
+    ds_set_clock_halt(false);
+    ds_time dt;
+    ESP_ERROR_CHECK(ds_get_time(&dt));
+    ds_log_time(&dt);
+    ds_time tomorrow = add_time(&dt, 9, 0, 0);
+    // ds_log_time(&tomorrow);
+
+    ds_time alarm_time = {.hours=8, .minutes=2};
+    ds_time next_alarm_time = get_next_alarm_time(&alarm_time);
+    // ESP_LOGD("Next Alarm Time", TAG);
+    ds_log_time(&next_alarm_time);
+
+    void *param = NULL; 
+    TaskHandle_t ws_task = NULL;
+    xTaskCreate(ws_run, "WEBSERVER", 3584, param, 1, &ws_task);
+    configASSERT(ws_task);
+
     lcd_init();
-    lcd_print("rich fonar");
-    
-    // while(1) {
-    //     ls_set_rgb(&c);
-    // }
-    // ls_time_fade(0, 255, 0, 1000);
+    lcd_display_alarm_time();
 
-    ws_run();
-    
-    
-    ESP_ERROR_CHECK(i2c_driver_delete(I2C_MASTER_NUM));
+    TaskHandle_t clock_task = NULL;
+    xTaskCreate(display_time, "CLOCK", 3584, param, 1, &clock_task);
+    configASSERT(clock_task);
+
+    TaskHandle_t alarm_task = NULL;
+    xTaskCreate(alarm_run, "ALARM", 3584, param, 1, &alarm_task);
+    configASSERT(alarm_task);
+
+
+    // ESP_ERROR_CHECK(i2c_driver_delete(I2C_MASTER_NUM));
     // ESP_LOGI(TAG, "I2C de-initialized successfully");
+    while(1)
+    vTaskDelay(10);
 }
 
 

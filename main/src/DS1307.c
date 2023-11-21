@@ -29,12 +29,18 @@ esp_err_t ds_set_clock_halt(bool halted)
         if ((ret = reg_write(DS_ADDRESS, DS_REG_SECONDS, &b, 1)) != ESP_OK) {
             return ret;
         }
+        printf("Turning on clock halt. Sending 0x%X\n", b);
+
     } else if (!halted && ch_on) {
         b &= 0x7F;
         if ((ret = reg_write(DS_ADDRESS, DS_REG_SECONDS, &b, 1)) != ESP_OK) {
             return ret;
         }
+        printf("Turning off clock halt. Sending 0x%X\n", b);
     }
+
+    // reg_read(DS_ADDRESS, DS_REG_SECONDS, &b, 1);
+    // printf("Seconds register = 0x%X\n", b);
 
     return ESP_OK;
 }
@@ -54,7 +60,6 @@ esp_err_t ds_get_time(ds_time* rtc_time)
     // Get minutes
     uint8_t minutes_tens = (rtc_data[1] & 0x70) >> 4;
     uint8_t minutes = (10 * minutes_tens) + (rtc_data[1] & 0x0F);
-
 
     // Get hours
     uint8_t hours_reg = rtc_data[2];
@@ -102,12 +107,24 @@ esp_err_t ds_set_seconds(const uint8_t seconds)
 {
     uint8_t tens = (seconds / 10) << 4;
     uint8_t sec = tens | (seconds % 10);
+
     
+    // Fixme will clear clock halt
     esp_err_t ret;
-    if ((ret = reg_write(DS_ADDRESS, DS_REG_SECONDS, &sec, 1)) != ESP_OK) {
+    uint8_t sec_reg;
+    if ((ret = reg_read(DS_ADDRESS, DS_REG_SECONDS, &sec_reg, 1)) != ESP_OK) {
+        ESP_LOGE(TAG, "Get Seconds error %d\n", sec);
         return ret;
     }
 
+    uint8_t clock_halt = sec_reg & (1 << 7);
+    sec |= clock_halt;
+
+    if ((ret = reg_write(DS_ADDRESS, DS_REG_SECONDS, &sec, 1)) != ESP_OK) {
+        ESP_LOGE(TAG, "Seconds error %d\n", sec);
+        return ret;
+    }
+    // printf("Set seconds %d\n", sec);
     return ESP_OK;
 }
 
@@ -128,8 +145,11 @@ esp_err_t ds_set_hours(const uint8_t hours)
 {
     uint8_t tens = (hours / 10) << 4;
     uint8_t h = tens | (hours % 10);
+    h &= ~(1 << 6); // Set to 24 hour time
+
     esp_err_t ret;
     if ((ret = reg_write(DS_ADDRESS, DS_REG_HOURS, &h, 1)) != ESP_OK) {
+        ESP_LOGE(TAG, "Set hours error (0x%X)", ret);
         return ret;
     }
 
@@ -186,13 +206,75 @@ esp_err_t ds_set_year(const uint8_t year)
     return ESP_OK;
 }
 
-void ds_log_time(ds_time *dt)
+void ds_log_time(const ds_time *dt)
 {
-    ESP_LOGI(TAG, "dt->seconds = %d", dt->seconds);
-    ESP_LOGI(TAG, "dt->minutes = %d", dt->minutes);
-    ESP_LOGI(TAG, "dt->hours = %d", dt->hours);
-    ESP_LOGI(TAG, "dt->day_of_week = %d", dt->day_of_week);
-    ESP_LOGI(TAG, "dt->day_of_month = %d", dt->day_of_month);
-    ESP_LOGI(TAG, "dt->months = %d", dt->months);
-    ESP_LOGI(TAG, "dt->years = %d", dt->years);
+    ESP_LOGI(TAG, "\n\tdt->seconds = %d\n\tdt->minutes = %d\n\tdt->hours = %d\n\tdt->day_of_week = %d\n\tdt->day_of_month = %d\n\tdt->months = %d\n\tdt->years = %d", 
+            dt->seconds, dt->minutes, dt->hours, dt->day_of_week, dt->day_of_month, dt->months, dt->years);
+}
+
+struct tm ds_time_to_tm(const ds_time *d) 
+{
+    struct tm timeInfo;
+    timeInfo.tm_sec = d->seconds;
+    timeInfo.tm_min = d->minutes;
+    timeInfo.tm_hour = d->hours;
+    timeInfo.tm_wday = d->day_of_week - 1;
+    timeInfo.tm_mday =  d->day_of_month - 1;
+    timeInfo.tm_mon = d->months - 1;
+    timeInfo.tm_year = d->years;
+
+    return timeInfo;
+}
+
+ds_time tm_to_ds_time(const struct tm t) 
+{
+    ds_time d;
+    d.seconds = t.tm_sec;
+    d.minutes = t.tm_min;
+    d.hours = t.tm_hour;
+    d.day_of_week = t.tm_wday + 1;
+    d.day_of_month = t.tm_mday + 1;
+    d.months = t.tm_mon + 1;
+    d.years = t.tm_year;
+
+    return d;
+}
+
+time_t ds_compare_time(const ds_time *d1, const ds_time *d2)
+{
+    struct tm t1 = ds_time_to_tm(d1);
+    struct tm t2 = ds_time_to_tm(d2);
+    time_t t1_seconds = mktime(&t1);
+    time_t t2_seconds = mktime(&t2);
+
+    return t1_seconds - t2_seconds;
+}
+
+ds_time add_time(const ds_time *start_time, int days, int minutes, int seconds) 
+{
+    struct tm timeInfo;
+    timeInfo.tm_sec = start_time->seconds;
+    timeInfo.tm_min = start_time->minutes;
+    timeInfo.tm_hour = start_time->hours;
+    timeInfo.tm_wday = start_time->day_of_week - 1;
+    timeInfo.tm_mday =  start_time->day_of_month - 1;
+    timeInfo.tm_mon = start_time->months - 1;
+    timeInfo.tm_year = start_time->years;
+
+    seconds += minutes * 60 + days * 86400;
+
+    time_t t = mktime(&timeInfo);  // Convert struct tm to time_t
+    t += seconds;  // Add seconds
+    timeInfo = *localtime(&t);  // Convert back to struct tm
+
+    ds_time diff_time;
+    diff_time.seconds = timeInfo.tm_sec;
+    diff_time.minutes = timeInfo.tm_min;
+    diff_time.hours = timeInfo.tm_hour;
+    diff_time.day_of_week = timeInfo.tm_wday + 1;
+    diff_time.day_of_month = timeInfo.tm_mday + 1;
+    diff_time.months = timeInfo.tm_mon + 1;
+    diff_time.years = timeInfo.tm_year;
+
+    return diff_time;
 }

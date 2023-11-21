@@ -1,7 +1,7 @@
 #include "lcd_display.h"
 #include <rom/ets_sys.h>
 #include "I2C_lib.h"
-
+#include "DS1307.h"
 
 #define PCF_ADDRESS 0x27
 
@@ -30,8 +30,8 @@
 static const char *TAG = "lcd_display";
 
 
-// HD44780U
-// PCF8574A
+// HD44780U https://www.sparkfun.com/datasheets/LCD/HD44780.pdf
+// PCF8574A https://nxp.com/docs/en/data-sheet/PCF8574_PCF8574A.pdf
 
 typedef enum
 {
@@ -81,7 +81,7 @@ void function_set_4_bit()
 
 void display_control()
 {
-    send_command(DISP_CTRL | DISP_CTRL_ON | DISP_CTRL_CURSOR_ON | DISP_CTRL_CURSOR_BLINK, 0);
+    send_command(DISP_CTRL | DISP_CTRL_ON, 0);
 }
 
 void lcd_clear_display()
@@ -130,7 +130,105 @@ void lcd_print_position(const char *sequence, uint8_t row, uint8_t col)
     }
 }
 
-uint8_t get_busy_flag()
+void lcd_display_time(const ds_time *time) 
+{
+    char time_str[16];
+    char ampm[3];
+    ampm[2] = '\0';
+    uint8_t hours;
+    if (time->hours < 12) {
+        ampm[0] = 'a';
+        ampm[1] = 'm';
+
+        if (time->hours == 0) {
+            hours = 12;
+        } else {
+            hours = time->hours;
+        }
+    } else if (time->hours >= 12){
+        ampm[0] = 'p';
+        ampm[1] = 'm';
+        if (time->hours != 12) {
+            hours = time->hours - 12;
+        } else {
+            hours = time->hours;
+        }
+    }
+
+    char *day_str = "  ";
+    switch (time->day_of_week) {
+        case 1:
+            day_str = "Sun";
+            break;
+        case 2:
+            day_str = "Mon";
+            break;
+        case 3:
+            day_str = "Tue";
+            break;
+        case 4:
+            day_str = "Wed";
+            break;
+        case 5:
+            day_str = "Thu";
+            break;
+        case 6:
+            day_str = "Fri";
+            break;
+        case 7:
+            day_str = "Sat";
+    }
+
+    sprintf(time_str, "%s %02d:%02d%s", day_str, hours, time->minutes, ampm);
+    lcd_print_position(time_str, 0, 0);
+}
+
+void lcd_display_alarm_time()
+{
+    FILE *time_file = fopen("/spiffs/alarm_time.txt", "r");
+    if (time_file == NULL) {
+        ESP_LOGE(TAG, "Couldn't open alarm_time.txt");
+        return;
+    }
+
+    char time_str[20];
+    time_str[5] = '\0';
+
+    int n = fread(time_str, sizeof(char), 5, time_file);
+    fclose(time_file);
+
+    if (n != 5) {
+        ESP_LOGE(TAG, "Invalid time in alarm_time.txt '%s'", time_str);
+        return;
+    } else {
+        uint8_t hours_tens = time_str[0] - 48;
+        uint8_t hours = (time_str[1] - 48) + (10 * hours_tens);
+        uint8_t minutes_tens = time_str[3] - 48;
+        uint8_t minutes = (time_str[4] - 48) + (10 * minutes_tens);
+
+        char ampm[3];
+        ampm[2] = '\0';
+        if (hours < 12) {
+            ampm[0] = 'a';
+            ampm[1] = 'm';
+
+            if (hours == 0) {
+                hours = 12;
+            }
+        } else if (hours >= 12){
+            ampm[0] = 'p';
+            ampm[1] = 'm';
+            if (hours != 12) {
+                hours = hours - 12;
+            }
+        }
+
+        sprintf(time_str, "Alarm: %02d:%02d%s", hours, minutes, ampm);
+        lcd_print_position(time_str, 1, 0);
+    }
+}
+
+static uint8_t get_busy_flag()
 {
     send_command(READ_BUSY_FLAG, HD_RW);
     uint8_t read_byte_1, read_byte_2;
@@ -164,8 +262,4 @@ void lcd_init()
     send_command(0x02, 0);
     backlight_value = HD_BT;
     write_i2c(0);
-
-    // lcd_print("I have a gun in my backpack.");
-    // lcd_print_position("fonarfonarfonar", 0, 3);
-    
 }

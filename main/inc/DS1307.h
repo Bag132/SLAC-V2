@@ -3,6 +3,9 @@
 #include "driver/i2c.h"
 #include "sdkconfig.h"
 #include "I2C_lib.h"
+#include <time.h>
+
+#pragma once
 
 typedef struct 
 {
@@ -33,4 +36,12 @@ esp_err_t ds_set_month(const uint8_t month);
 
 esp_err_t ds_set_year(const uint8_t year);
 
-void ds_log_time(ds_time *dt);
+void ds_log_time(const ds_time *dt);
+
+struct tm ds_time_to_tm(const ds_time *d);
+
+ds_time tm_to_ds_time(const struct tm t);
+
+time_t ds_compare_time(const ds_time *d1, const ds_time *d2);
+
+ds_time add_time(const ds_time *start_time, int days, int minutes, int seconds);
