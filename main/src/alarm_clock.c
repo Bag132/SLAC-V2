@@ -168,7 +168,7 @@ void alarm_run() {
                 }
 
                 if (stop_requested) {
-                    stop_requested = !stop_requested;
+                    stop_requested = false;
                     current_state = ACTIVATED;
                 }
                 
